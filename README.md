@@ -6,6 +6,8 @@ A browser-capable, retro 2D arcade shooter written in Rust with
 The project began as a terminal game and has been migrated to a fixed-resolution
 pixel-art renderer while keeping the simulation independent from the engine.
 
+![Gameplay preview](gameplay.gif)
+
 ## Features
 
 - Five rows of animated invaders with accelerating movement
