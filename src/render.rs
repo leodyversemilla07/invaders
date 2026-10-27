@@ -56,7 +56,10 @@ pub fn draw_game(game: &Game, assets: &RenderAssets) {
         GameState::Ready => draw_ready_screen(assets),
         GameState::Paused => draw_paused_screen(assets),
         GameState::GameOver => draw_game_over_screen(game, assets),
-        GameState::Playing => draw_wave_clear_progress(game, assets),
+        GameState::Playing => {
+            draw_wave_clear_progress(game, assets);
+            draw_wave_intro(game, assets);
+        }
     }
 }
 
@@ -115,12 +118,17 @@ fn draw_hud(game: &Game, assets: &RenderAssets) {
 
     let wave = format!("WAVE {:02}", game.wave);
     let wave_width = measure_text(&wave, Some(&assets.font), 16, 1.0).width;
+    let wave_color = if game.wave_intro_remaining() > 0.0 {
+        COLOR_PRIMARY
+    } else {
+        COLOR_ACCENT
+    };
     draw_px_text(
         &wave,
         (WORLD_WIDTH - wave_width) / 2.0,
         21.0,
         16,
-        COLOR_ACCENT,
+        wave_color,
         &assets.font,
     );
 
@@ -307,12 +315,59 @@ fn draw_wave_clear_progress(game: &Game, assets: &RenderAssets) {
         return;
     }
 
-    draw_centered_text("WAVE CLEAR", 272.0, 24, COLOR_ACCENT, &assets.font);
+    draw_banner_panel();
+
+    draw_centered_text("WAVE CLEAR", 250.0, 24, COLOR_ACCENT, &assets.font);
+    draw_centered_text(
+        &format!("+{} BONUS", game.wave_bonus()),
+        292.0,
+        16,
+        COLOR_PRIMARY,
+        &assets.font,
+    );
     let width = 320.0;
     let x = (WORLD_WIDTH - width) / 2.0;
-    let y = 316.0;
+    let y = 336.0;
     draw_rectangle(x, y, width, 12.0, Color::from_rgba(255, 255, 255, 35));
     draw_rectangle(x, y, width * game.wave_progress(), 12.0, COLOR_ACCENT);
+}
+
+fn draw_wave_intro(game: &Game, assets: &RenderAssets) {
+    if game.wave_intro_remaining() <= 0.0 {
+        return;
+    }
+
+    draw_banner_panel();
+
+    let remaining = game.aliens_remaining();
+    draw_centered_text(
+        &format!("WAVE {:02}", game.wave),
+        250.0,
+        40,
+        COLOR_ACCENT,
+        &assets.font,
+    );
+    draw_centered_text(
+        &format!("{} INVADERS INCOMING", remaining),
+        292.0,
+        16,
+        COLOR_PRIMARY,
+        &assets.font,
+    );
+    draw_centered_text("GET READY", 322.0, 16, COLOR_MUTED, &assets.font);
+
+    let width = 240.0;
+    let x = (WORLD_WIDTH - width) / 2.0;
+    let y = 336.0;
+    draw_rectangle(x, y, width, 8.0, Color::from_rgba(255, 255, 255, 30));
+    draw_rectangle(x, y, width * game.wave_intro_progress(), 8.0, COLOR_ACCENT);
+}
+
+/// A dim panel that keeps the wave banners readable over the formation.
+fn draw_banner_panel() {
+    draw_rectangle(120.0, 176.0, 560.0, 196.0, Color::from_rgba(7, 10, 28, 216));
+    draw_rectangle_lines(120.0, 176.0, 560.0, 196.0, 2.0, Color::from_hex(0x344166));
+    draw_rectangle_lines(128.0, 184.0, 544.0, 180.0, 1.0, Color::from_hex(0x1d294d));
 }
 
 fn draw_overlay() {

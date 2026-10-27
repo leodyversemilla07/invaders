@@ -30,6 +30,34 @@ const ALIEN_START_Y: f32 = 96.0;
 const ALIEN_COLUMN_SPACING: f32 = 60.0;
 const ALIEN_ROW_SPACING: f32 = 48.0;
 const WAVE_CLEAR_DURATION: f32 = 1.25;
+const WAVE_INTRO_DURATION: f32 = 1.6;
+
+/// Points awarded for clearing a wave, before the wave scaling.
+pub const WAVE_BONUS_POINTS: u32 = 50;
+/// How many waves the formation may drift downwards before it stops.
+const MAX_WAVE_DEPTH: u32 = 6;
+/// The lowest row a formation may start on, leaving room to manoeuvre.
+const MAX_FORMATION_BOTTOM: f32 = 430.0;
+
+/// The difficulty knobs of the wave that is currently being played.
+///
+/// Every value is derived from the wave number, so a cleared wave always
+/// hands the player a tougher formation than the previous one.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WaveDifficulty {
+    /// Number of rows in the formation.
+    pub rows: usize,
+    /// How long the formation waits between steps.
+    pub move_interval: f32,
+    /// How long the invaders wait between volleys.
+    pub fire_interval: f32,
+    /// Speed of the invaders' projectiles.
+    pub bullet_speed: f32,
+    /// How many invaders fire in a single volley.
+    pub volley_size: usize,
+    /// How far the formation starts below its original position.
+    pub start_depth: f32,
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct InputState {
@@ -124,6 +152,7 @@ pub struct Game {
     pub lives: u8,
     pub elapsed: f32,
     pub wave_clear_timer: f32,
+    pub wave_intro_timer: f32,
     pub invulnerability_timer: f32,
 
     events: Vec<GameEvent>,
@@ -158,6 +187,7 @@ impl Game {
             lives: 3,
             elapsed: 0.0,
             wave_clear_timer: 0.0,
+            wave_intro_timer: 0.0,
             invulnerability_timer: 0.0,
             events: Vec::new(),
             alien_move_timer: 0.0,
@@ -210,6 +240,14 @@ impl Game {
         self.update_bullets(delta_time);
         self.resolve_player_bullet_hits();
         self.resolve_alien_bullet_hits();
+
+        // The incoming wave is announced while the formation holds still, so
+        // the player gets a short breather between waves.
+        if self.wave_intro_timer > 0.0 {
+            self.wave_intro_timer = (self.wave_intro_timer - delta_time).max(0.0);
+            return;
+        }
+
         self.update_alien_movement(delta_time);
         self.update_alien_firing(delta_time);
 
@@ -241,16 +279,30 @@ impl Game {
         (self.wave_clear_timer / WAVE_CLEAR_DURATION).clamp(0.0, 1.0)
     }
 
-    fn spawn_wave(&mut self) {
+    /// Remaining time of the "wave incoming" announcement.
+    pub fn wave_intro_remaining(&self) -> f32 {
+        self.wave_intro_timer
+    }
+
+    /// Fraction of the announcement that is still left.
+    pub fn wave_intro_progress(&self) -> f32 {
+        (self.wave_intro_timer / WAVE_INTRO_DURATION).clamp(0.0, 1.0)
+    }
+
+    /// Number of invaders still standing in the current wave.
+    pub fn aliens_remaining(&self) -> usize {
+        self.aliens.iter().filter(|alien| alien.alive).count()
+    }
+
+    pub fn spawn_wave(&mut self) {
         self.aliens.clear();
 
-        let wave_offset =
-            f32::from(u16::try_from(self.wave.saturating_sub(1).min(6)).unwrap_or(6)) * 20.0;
-        for row in 0..ALIEN_ROWS {
+        let difficulty = self.difficulty();
+        for row in 0..difficulty.rows {
             for column in 0..ALIEN_COLUMNS {
                 self.aliens.push(Alien {
                     x: ALIEN_START_X + column as f32 * ALIEN_COLUMN_SPACING,
-                    y: ALIEN_START_Y + wave_offset + row as f32 * ALIEN_ROW_SPACING,
+                    y: ALIEN_START_Y + difficulty.start_depth + row as f32 * ALIEN_ROW_SPACING,
                     width: ALIEN_WIDTH,
                     height: ALIEN_HEIGHT,
                     row,
@@ -261,15 +313,72 @@ impl Game {
 
         self.alien_direction = 1.0;
         self.alien_move_timer = 0.0;
-        self.alien_fire_timer = 0.8;
+        self.alien_fire_timer = 1.2;
         self.wave_clear_timer = 0.0;
     }
 
     fn advance_wave(&mut self) {
         self.events.push(GameEvent::WaveCleared);
+        let bonus = self.wave_bonus();
         self.wave = self.wave.saturating_add(1);
-        self.score = self.score.saturating_add(50);
+        self.score = self.score.saturating_add(bonus);
         self.spawn_wave();
+        self.wave_intro_timer = WAVE_INTRO_DURATION;
+    }
+
+    /// Difficulty of the wave that is currently being played.
+    ///
+    /// The curve is deliberately steep: later waves bring more rows, a faster
+    /// formation, more simultaneous shots and faster projectiles.
+    pub fn difficulty(&self) -> WaveDifficulty {
+        let wave = self.wave.max(1);
+        let steps = (wave - 1) as f32;
+        let score_factor = self.score as f32 / 5_000.0;
+
+        let rows = match wave {
+            1..=2 => ALIEN_ROWS,
+            3..=5 => ALIEN_ROWS + 1,
+            _ => ALIEN_ROWS + 2,
+        };
+
+        // A deeper formation is only allowed while it still leaves the player
+        // room to dodge, so bigger formations start closer to the top.
+        let formation_bottom = ALIEN_START_Y + (rows as f32 - 1.0) * ALIEN_ROW_SPACING;
+        let max_depth = (MAX_FORMATION_BOTTOM - formation_bottom).max(0.0);
+        let start_depth = (steps.min(MAX_WAVE_DEPTH as f32) * 20.0).min(max_depth);
+
+        WaveDifficulty {
+            rows,
+            move_interval: (0.86 - steps * 0.06 - score_factor * 0.04).max(0.14),
+            fire_interval: (1.45 - steps * 0.08 - score_factor * 0.08).max(0.30),
+            bullet_speed: 220.0 + steps * 14.0,
+            volley_size: match wave {
+                1..=2 => 1,
+                3..=5 => 2,
+                _ => 3,
+            },
+            start_depth,
+        }
+    }
+
+    /// Points awarded for clearing the wave that was just finished.
+    pub fn wave_bonus(&self) -> u32 {
+        WAVE_BONUS_POINTS + (self.wave.max(1) - 1) * 25
+    }
+
+    /// How long the formation waits between steps.
+    fn alien_move_interval(&self) -> f32 {
+        self.difficulty().move_interval
+    }
+
+    /// How long the invaders wait between volleys.
+    fn alien_fire_interval(&self) -> f32 {
+        self.difficulty().fire_interval
+    }
+
+    /// Speed of the invaders' projectiles.
+    fn alien_bullet_speed(&self) -> f32 {
+        self.difficulty().bullet_speed
     }
 
     fn update_player(&mut self, delta_time: f32, input: InputState) {
@@ -285,6 +394,7 @@ impl Game {
         self.player.x = self.player.x.clamp(minimum_x, maximum_x);
 
         if input.fire
+            && self.wave_intro_timer <= 0.0
             && self.player_fire_cooldown <= 0.0
             && self.player_bullets.len() < MAX_PLAYER_BULLETS
         {
@@ -307,7 +417,7 @@ impl Game {
         self.player_bullets
             .retain(|bullet| !bullet.dead && bullet.y + bullet.height >= HUD_HEIGHT);
 
-        let alien_bullet_speed = 230.0 + self.wave as f32 * 8.0;
+        let alien_bullet_speed = self.alien_bullet_speed();
         for bullet in &mut self.alien_bullets {
             bullet.y += alien_bullet_speed * delta_time;
         }
@@ -408,8 +518,7 @@ impl Game {
             return;
         }
 
-        let speed_bonus = self.score as f32 / 5_000.0;
-        let movement_interval = (0.82 - self.wave as f32 * 0.055 - speed_bonus * 0.04).max(0.18);
+        let movement_interval = self.alien_move_interval();
         self.alien_move_timer = movement_interval;
 
         let Some(minimum_x) = self
@@ -473,19 +582,34 @@ impl Game {
             return;
         }
 
-        let selected = living_indices[self.random_index(living_indices.len())];
-        let alien = self.aliens[selected];
-        self.alien_bullets.push(Bullet {
-            x: alien.x + alien.width / 2.0 - 2.0,
-            y: alien.y + alien.height,
-            width: 4.0,
-            height: 10.0,
-            dead: false,
-        });
-        self.events.push(GameEvent::AlienFired);
+        // Later waves answer with a volley from several invaders at once.
+        let volley_size = self
+            .difficulty()
+            .volley_size
+            .min(living_indices.len())
+            .max(1);
 
-        let base_interval =
-            (1.35 - self.wave as f32 * 0.07 - self.score as f32 / 5_000.0 * 0.08).max(0.42);
+        let mut shooters: Vec<usize> = Vec::with_capacity(volley_size);
+        for _ in 0..volley_size {
+            let candidate = living_indices[self.random_index(living_indices.len())];
+            if !shooters.contains(&candidate) {
+                shooters.push(candidate);
+            }
+        }
+
+        for index in shooters {
+            let alien = self.aliens[index];
+            self.alien_bullets.push(Bullet {
+                x: alien.x + alien.width / 2.0 - 2.0,
+                y: alien.y + alien.height,
+                width: 4.0,
+                height: 10.0,
+                dead: false,
+            });
+            self.events.push(GameEvent::AlienFired);
+        }
+
+        let base_interval = self.alien_fire_interval();
         let variation = 0.8 + (self.next_random() % 401) as f32 / 1_000.0;
         self.alien_fire_timer = base_interval * variation;
     }
@@ -627,6 +751,146 @@ mod tests {
 
         assert_eq!(game.wave, 2);
         assert!(game.aliens.iter().all(|alien| alien.alive));
-        assert_eq!(game.score, 50);
+        assert_eq!(game.score, WAVE_BONUS_POINTS);
+    }
+
+    #[test]
+    fn the_next_wave_is_announced_before_the_formation_moves() {
+        let mut game = Game::new();
+        game.start();
+        for alien in &mut game.aliens {
+            alien.alive = false;
+        }
+        game.wave_clear_timer = WAVE_CLEAR_DURATION - 0.01;
+        game.update(0.02, InputState::default());
+
+        assert_eq!(game.wave, 2);
+        assert_eq!(game.wave_intro_remaining(), WAVE_INTRO_DURATION);
+
+        let first_alien_x = game.aliens[0].x;
+        game.update(0.5, InputState::default());
+        assert_eq!(
+            game.aliens[0].x, first_alien_x,
+            "formation should hold still"
+        );
+
+        advance(&mut game, WAVE_INTRO_DURATION);
+        assert_eq!(game.wave_intro_remaining(), 0.0);
+        advance(&mut game, 1.0);
+        assert_ne!(
+            game.aliens[0].x, first_alien_x,
+            "formation should move again"
+        );
+    }
+
+    #[test]
+    fn the_player_cannot_fire_during_the_wave_intro() {
+        let mut game = Game::new();
+        game.start();
+        for alien in &mut game.aliens {
+            alien.alive = false;
+        }
+        game.wave_clear_timer = WAVE_CLEAR_DURATION - 0.01;
+        game.update(0.02, InputState::default());
+
+        game.update(
+            0.1,
+            InputState {
+                fire: true,
+                ..InputState::default()
+            },
+        );
+        assert!(game.player_bullets.is_empty());
+
+        advance(&mut game, WAVE_INTRO_DURATION);
+        game.update(
+            0.1,
+            InputState {
+                fire: true,
+                ..InputState::default()
+            },
+        );
+        assert_eq!(game.player_bullets.len(), 1);
+    }
+
+    /// Runs the simulation in fixed steps, the way the game loop does.
+    fn advance(game: &mut Game, seconds: f32) {
+        let steps = (seconds / (1.0 / 60.0)).ceil() as u32;
+        for _ in 0..steps {
+            game.update(1.0 / 60.0, InputState::default());
+        }
+    }
+
+    #[test]
+    fn later_waves_are_more_aggressive() {
+        let mut game = Game::new();
+
+        let first = game.difficulty();
+
+        game.wave = 6;
+        let sixth = game.difficulty();
+
+        assert!(sixth.move_interval < first.move_interval);
+        assert!(sixth.fire_interval < first.fire_interval);
+        assert!(sixth.bullet_speed > first.bullet_speed);
+        assert!(sixth.volley_size > first.volley_size);
+        assert!(sixth.rows > first.rows);
+    }
+
+    #[test]
+    fn waves_grow_the_formation() {
+        let mut game = Game::new();
+        assert_eq!(game.difficulty().rows, ALIEN_ROWS);
+
+        game.wave = 4;
+        assert_eq!(game.difficulty().rows, ALIEN_ROWS + 1);
+
+        game.wave = 7;
+        assert_eq!(game.difficulty().rows, ALIEN_ROWS + 2);
+
+        game.wave = 4;
+        game.spawn_wave();
+        assert_eq!(game.aliens.len(), (ALIEN_ROWS + 1) * ALIEN_COLUMNS);
+    }
+
+    #[test]
+    fn the_formation_always_starts_above_the_player() {
+        let mut game = Game::new();
+
+        for wave in 1..=20 {
+            game.wave = wave;
+            game.spawn_wave();
+
+            let lowest = game
+                .aliens
+                .iter()
+                .map(|alien| alien.y + alien.height)
+                .fold(0.0_f32, f32::max);
+
+            assert!(
+                lowest < game.player.y - 40.0,
+                "wave {wave} starts too low: {lowest}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_wave_bonus_grows_with_the_wave() {
+        let mut game = Game::new();
+        assert_eq!(game.wave_bonus(), WAVE_BONUS_POINTS);
+
+        game.wave = 4;
+        assert_eq!(game.wave_bonus(), WAVE_BONUS_POINTS + 75);
+    }
+
+    #[test]
+    fn waves_formation_starts_lower_as_the_game_progresses() {
+        let mut game = Game::new();
+        let first_wave_y = game.aliens[0].y;
+
+        game.wave = 4;
+        game.spawn_wave();
+
+        assert!(game.aliens[0].y > first_wave_y);
     }
 }
