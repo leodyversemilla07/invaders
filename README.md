@@ -16,6 +16,7 @@ pixel-art renderer while keeping the simulation independent from the engine.
 - Accelerating movement, faster projectiles, and multi-invader volleys in later waves
 - A "wave incoming" countdown that holds the formation still between waves
 - Three lives, alien projectiles, collisions, scoring, and wave-clear bonuses
+- A persistent top-five high-score table that survives a restart
 - Pause, restart, mute, a title screen, and a game-over screen
 - Sound effects on desktop and in the browser, with no system packages to install
 - Fixed 60 Hz simulation with rendering independent of frame rate
@@ -106,10 +107,11 @@ redeploys the game to <https://leodyversemilla07.github.io/invaders/>.
 
 ```text
 src/
-├── audio.rs   # Cross-platform sound playback (PulseAudio, system, Web Audio)
-├── game.rs    # Engine-independent rules, state, collisions, and unit tests
-├── main.rs    # Macroquad loop, input, audio, and fixed-timestep driver
-└── render.rs  # Pixel-art renderer, HUD, and screens
+├── audio.rs     # Cross-platform sound playback (PulseAudio, system, Web Audio)
+├── game.rs      # Engine-independent rules, state, collisions, and unit tests
+├── highscore.rs # Persistent high-score table and its platform backends
+├── main.rs      # Macroquad loop, input, audio, and fixed-timestep driver
+└── render.rs    # Pixel-art renderer, HUD, and screens
 assets/        # Sprites, font, sounds, and third-party licenses
 web/           # Browser loader and generated deployment files
 scripts/       # WebAssembly build helper
@@ -126,6 +128,11 @@ vendor/        # Patched quad-snd copy for WebAssembly audio
 
 Full source links, selected filenames, and license details are in
 [`assets/ATTRIBUTION.md`](assets/ATTRIBUTION.md).
+
+## License
+
+The game code is released under the [MIT License](LICENSE). The art, font,
+and sound effects are licensed separately, as listed above.
 
 This is an independent game project and is not affiliated with or endorsed by
 Taito Corporation. “Space Invaders” is a trademark of Taito Corporation; this

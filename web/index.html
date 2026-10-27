@@ -132,6 +132,55 @@
         importObject.env.game_ready = () => loading.classList.add("hidden");
       }
 
+      // High scores are kept in localStorage so they survive a page reload.
+      const HIGHSCORE_KEY = "invader-patrol.highscores";
+
+      function readHighScores() {
+        try {
+          const raw = localStorage.getItem(HIGHSCORE_KEY);
+          if (!raw) {
+            return [];
+          }
+
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) {
+            return [];
+          }
+
+          return parsed
+            .filter((entry) => Array.isArray(entry) && entry.length === 2)
+            .map(([score, wave]) => [Number(score) >>> 0, Number(wave) >>> 0]);
+        } catch (error) {
+          console.warn("Could not read the high scores", error);
+          return [];
+        }
+      }
+
+      function writeHighScores(entries) {
+        try {
+          localStorage.setItem(HIGHSCORE_KEY, JSON.stringify(entries));
+        } catch (error) {
+          console.warn("Could not save the high scores", error);
+        }
+      }
+
+      let highScoreEntries = readHighScores();
+
+      if (typeof importObject !== "undefined" && importObject.env) {
+        importObject.env.highscore_count = () => highScoreEntries.length;
+        importObject.env.highscore_score = (index) =>
+          highScoreEntries[index]?.[0] ?? 0;
+        importObject.env.highscore_wave = (index) =>
+          highScoreEntries[index]?.[1] ?? 0;
+        importObject.env.highscore_store = (index, score, wave) => {
+          highScoreEntries[index] = [score >>> 0, wave >>> 0];
+        };
+        importObject.env.highscore_set_length = (length) => {
+          highScoreEntries.length = length;
+          writeHighScores(highScoreEntries);
+        };
+      }
+
       load("invaders.wasm");
 
       // The loader installs its keyboard handlers on the canvas. Synthesizing

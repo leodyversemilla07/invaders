@@ -1,5 +1,6 @@
 mod audio;
 mod game;
+mod highscore;
 mod render;
 
 use std::error::Error;
@@ -9,6 +10,7 @@ use macroquad::prelude::*;
 use crate::{
     audio::{AudioPlayer, Sound},
     game::{Game, GameEvent, GameState, InputState, WORLD_HEIGHT, WORLD_WIDTH},
+    highscore::HighScores,
     render::RenderAssets,
 };
 
@@ -62,24 +64,33 @@ impl Sounds {
     }
 }
 
-fn handle_events(game: &mut Game, player: &AudioPlayer, sounds: &Sounds, muted: bool) {
-    if muted {
-        return;
-    }
-
+fn handle_events(
+    game: &mut Game,
+    player: &AudioPlayer,
+    sounds: &Sounds,
+    muted: bool,
+    scores: &mut HighScores,
+) {
     for event in game.take_events() {
         match event {
-            GameEvent::PlayerFired => play_sound(player, &sounds.player_shot, 0.32),
-            GameEvent::AlienFired => play_sound(player, &sounds.alien_shot, 0.18),
-            GameEvent::AlienDestroyed => play_sound(player, &sounds.explosion, 0.42),
-            GameEvent::PlayerHit => play_sound(player, &sounds.player_hit, 0.65),
-            GameEvent::WaveCleared => play_sound(player, &sounds.wave_clear, 0.65),
-            GameEvent::GameOver => play_sound(player, &sounds.game_over, 0.75),
+            GameEvent::PlayerFired => play_sound(player, &sounds.player_shot, 0.32, muted),
+            GameEvent::AlienFired => play_sound(player, &sounds.alien_shot, 0.18, muted),
+            GameEvent::AlienDestroyed => play_sound(player, &sounds.explosion, 0.42, muted),
+            GameEvent::PlayerHit => play_sound(player, &sounds.player_hit, 0.65, muted),
+            GameEvent::WaveCleared => play_sound(player, &sounds.wave_clear, 0.65, muted),
+            GameEvent::GameOver => {
+                play_sound(player, &sounds.game_over, 0.75, muted);
+                scores.submit(game.score, game.wave);
+            }
         }
     }
 }
 
-fn play_sound(player: &AudioPlayer, sound: &Option<Sound>, volume: f32) {
+fn play_sound(player: &AudioPlayer, sound: &Option<Sound>, volume: f32, muted: bool) {
+    if muted {
+        return;
+    }
+
     if let Some(sound) = sound {
         player.play(sound, volume);
     }
@@ -93,6 +104,7 @@ async fn main() -> AppResult<()> {
     let audio_player = AudioPlayer::new();
     let sounds = Sounds::load(&audio_player).await;
     let mut game = Game::new_with_seed(get_time().to_bits());
+    let mut high_scores = HighScores::load();
     let mut muted = false;
     let mut accumulator = 0.0;
     let mut first_frame = true;
@@ -155,11 +167,11 @@ async fn main() -> AppResult<()> {
             accumulator = 0.0;
         }
 
-        handle_events(&mut game, &audio_player, &sounds, muted);
+        handle_events(&mut game, &audio_player, &sounds, muted, &mut high_scores);
 
         set_camera(&virtual_camera);
         clear_background(BLACK);
-        render::draw_game(&game, &assets);
+        render::draw_game(&game, &assets, &high_scores);
 
         set_default_camera();
         clear_background(BLACK);

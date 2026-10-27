@@ -1,6 +1,7 @@
 use macroquad::prelude::*;
 
 use crate::game::{Game, GameState, HUD_HEIGHT, WORLD_HEIGHT, WORLD_WIDTH};
+use crate::highscore::HighScores;
 
 const SPRITE_PLAYER: Rect = Rect::new(1.0, 20.0, 13.0, 8.0);
 const SPRITE_PLAYER_FIRING: Rect = Rect::new(17.0, 20.0, 13.0, 8.0);
@@ -44,7 +45,7 @@ impl RenderAssets {
     }
 }
 
-pub fn draw_game(game: &Game, assets: &RenderAssets) {
+pub fn draw_game(game: &Game, assets: &RenderAssets, scores: &HighScores) {
     draw_background();
     draw_hud(game, assets);
     draw_aliens(game, assets);
@@ -53,9 +54,9 @@ pub fn draw_game(game: &Game, assets: &RenderAssets) {
     draw_floor();
 
     match game.state {
-        GameState::Ready => draw_ready_screen(assets),
+        GameState::Ready => draw_ready_screen(assets, scores),
         GameState::Paused => draw_paused_screen(assets),
-        GameState::GameOver => draw_game_over_screen(game, assets),
+        GameState::GameOver => draw_game_over_screen(game, assets, scores),
         GameState::Playing => {
             draw_wave_clear_progress(game, assets);
             draw_wave_intro(game, assets);
@@ -265,20 +266,31 @@ fn draw_sprite(
     );
 }
 
-fn draw_ready_screen(assets: &RenderAssets) {
-    draw_overlay();
+fn draw_ready_screen(assets: &RenderAssets, scores: &HighScores) {
+    draw_overlay(154.0, 238.0);
     draw_centered_text("INVADER PATROL", 190.0, 40, COLOR_PRIMARY, &assets.font);
+
+    if let Some(best) = scores.best() {
+        draw_centered_text(
+            &format!("BEST {:06}  WAVE {:02}", best.score, best.wave),
+            246.0,
+            16,
+            COLOR_ACCENT,
+            &assets.font,
+        );
+    }
+
     draw_centered_text(
         "PRESS ENTER TO START",
-        262.0,
+        282.0,
         16,
         COLOR_ACCENT,
         &assets.font,
     );
-    draw_centered_text("ARROWS OR A/D: MOVE", 314.0, 16, COLOR_MUTED, &assets.font);
+    draw_centered_text("ARROWS OR A/D: MOVE", 322.0, 16, COLOR_MUTED, &assets.font);
     draw_centered_text(
         "SPACE: FIRE   P: PAUSE",
-        344.0,
+        352.0,
         16,
         COLOR_MUTED,
         &assets.font,
@@ -286,24 +298,53 @@ fn draw_ready_screen(assets: &RenderAssets) {
 }
 
 fn draw_paused_screen(assets: &RenderAssets) {
-    draw_overlay();
+    draw_overlay(154.0, 238.0);
     draw_centered_text("PAUSED", 260.0, 40, COLOR_PRIMARY, &assets.font);
     draw_centered_text("PRESS P TO CONTINUE", 322.0, 16, COLOR_ACCENT, &assets.font);
 }
 
-fn draw_game_over_screen(game: &Game, assets: &RenderAssets) {
-    draw_overlay();
-    draw_centered_text("GAME OVER", 210.0, 40, COLOR_DANGER, &assets.font);
+fn draw_game_over_screen(game: &Game, assets: &RenderAssets, scores: &HighScores) {
+    draw_overlay(104.0, 392.0);
+    draw_centered_text("GAME OVER", 140.0, 40, COLOR_DANGER, &assets.font);
     draw_centered_text(
         &format!("SCORE {:06}", game.score),
-        280.0,
+        208.0,
         20,
         COLOR_PRIMARY,
         &assets.font,
     );
     draw_centered_text(
+        &format!("WAVE {:02}", game.wave),
+        238.0,
+        16,
+        COLOR_MUTED,
+        &assets.font,
+    );
+
+    if scores.recorded() {
+        draw_centered_text("NEW HIGH SCORE!", 268.0, 16, COLOR_ACCENT, &assets.font);
+    }
+
+    draw_centered_text("HIGH SCORES", 306.0, 16, COLOR_MUTED, &assets.font);
+
+    if scores.entries().is_empty() {
+        draw_centered_text("NO SCORES YET", 340.0, 16, COLOR_MUTED, &assets.font);
+    }
+
+    for (index, entry) in scores.entries().iter().enumerate() {
+        let text = format!("{}. {:06}  WAVE {:02}", index + 1, entry.score, entry.wave);
+        draw_centered_text(
+            &text,
+            340.0 + index as f32 * 24.0,
+            16,
+            COLOR_PRIMARY,
+            &assets.font,
+        );
+    }
+
+    draw_centered_text(
         "PRESS ENTER TO RETRY",
-        330.0,
+        462.0,
         16,
         COLOR_ACCENT,
         &assets.font,
@@ -370,13 +411,27 @@ fn draw_banner_panel() {
     draw_rectangle_lines(128.0, 184.0, 544.0, 180.0, 1.0, Color::from_hex(0x1d294d));
 }
 
-fn draw_overlay() {
+fn draw_overlay(top: f32, height: f32) {
     draw_rectangle(0.0, 0.0, WORLD_WIDTH, WORLD_HEIGHT, COLOR_PANEL);
-    draw_rectangle_lines(112.0, 154.0, 576.0, 238.0, 2.0, Color::from_hex(0x344166));
-    draw_rectangle_lines(116.0, 158.0, 568.0, 230.0, 1.0, Color::from_hex(0x1d294d));
+    draw_rectangle_lines(112.0, top, 576.0, height, 2.0, Color::from_hex(0x344166));
+    draw_rectangle_lines(
+        116.0,
+        top + 4.0,
+        568.0,
+        height - 8.0,
+        1.0,
+        Color::from_hex(0x1d294d),
+    );
 
     // A subtle decorative line keeps the panel visually connected to the HUD.
-    draw_line(150.0, 170.0, 650.0, 170.0, 1.0, Color::from_hex(0x253258));
+    draw_line(
+        150.0,
+        top + 16.0,
+        650.0,
+        top + 16.0,
+        1.0,
+        Color::from_hex(0x253258),
+    );
 }
 
 fn draw_centered_text(text: &str, y: f32, size: u16, color: Color, font: &Font) {
