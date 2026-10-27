@@ -8,10 +8,14 @@ pixel-art renderer while keeping the simulation independent from the engine.
 
 ![Gameplay preview](gameplay.gif)
 
+**Play it in the browser:** <https://leodyversemilla07.github.io/invaders/>
+
 ## Features
 
-- Five rows of animated invaders with accelerating movement
-- Three lives, alien projectiles, collisions, scoring, and progressive waves
+- Animated invaders in a formation that grows from five to seven rows per wave
+- Accelerating movement, faster projectiles, and multi-invader volleys in later waves
+- A "wave incoming" countdown that holds the formation still between waves
+- Three lives, alien projectiles, collisions, scoring, and wave-clear bonuses
 - Pause, restart, mute, a title screen, and a game-over screen
 - Sound effects on desktop and in the browser, with no system packages to install
 - Fixed 60 Hz simulation with rendering independent of frame rate
@@ -53,6 +57,9 @@ available, the game still runs, just silently.
 
 ## Build and run in a browser
 
+The hosted version is at <https://leodyversemilla07.github.io/invaders/>. To
+run it locally:
+
 ```bash
 rustup target add wasm32-unknown-unknown
 ./scripts/build-web.sh
@@ -83,6 +90,18 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
+These same checks run automatically in CI on every push and pull request.
+
+## Deployment
+
+| Workflow | Trigger | Purpose |
+|---|---|---|
+| `.github/workflows/ci.yml` | push / PR to `main` | Format, clippy, tests, and the WebAssembly build |
+| `.github/workflows/deploy.yml` | push to `main` | Builds the web bundle and publishes it to the `gh-pages` branch |
+
+The `gh-pages` branch is the GitHub Pages source, so every push to `main`
+redeploys the game to <https://leodyversemilla07.github.io/invaders/>.
+
 ## Project layout
 
 ```text
@@ -95,6 +114,7 @@ assets/        # Sprites, font, sounds, and third-party licenses
 web/           # Browser loader and generated deployment files
 scripts/       # WebAssembly build helper
 vendor/        # Patched quad-snd copy for WebAssembly audio
+.github/       # CI and GitHub Pages workflows
 ```
 
 ## Asset credits
