@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#080b1c" />
+    <title>Invader Patrol</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #050713;
+      }
+
+      #glcanvas {
+        position: absolute;
+        inset: 0;
+        display: block;
+        width: 100%;
+        height: 100%;
+        outline: none;
+        touch-action: none;
+      }
+
+      #loading {
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        display: grid;
+        place-items: center;
+        color: #64f4ff;
+        background: #080b1c;
+        letter-spacing: 0.16em;
+        pointer-events: none;
+        transition: opacity 180ms ease;
+      }
+
+      #loading.hidden {
+        opacity: 0;
+      }
+
+      #touch-controls {
+        position: absolute;
+        right: max(16px, env(safe-area-inset-right));
+        bottom: max(16px, env(safe-area-inset-bottom));
+        left: max(16px, env(safe-area-inset-left));
+        z-index: 2;
+        display: none;
+        justify-content: space-between;
+        align-items: end;
+        pointer-events: none;
+      }
+
+      .touch-group {
+        display: flex;
+        gap: 12px;
+      }
+
+      button {
+        width: 68px;
+        height: 68px;
+        padding: 0;
+        border: 2px solid #64f4ff;
+        border-radius: 16px;
+        color: #f5f7ff;
+        background: rgb(17 22 47 / 82%);
+        box-shadow: 0 0 18px rgb(100 244 255 / 20%);
+        font: 700 22px ui-monospace, monospace;
+        pointer-events: auto;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      button:active {
+        color: #080b1c;
+        background: #64f4ff;
+        transform: scale(0.96);
+      }
+
+      #fire {
+        width: 82px;
+        height: 82px;
+        border-color: #ffe45c;
+        color: #ffe45c;
+      }
+
+      @media (pointer: coarse) {
+        #touch-controls {
+          display: flex;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="glcanvas" tabindex="1"></canvas>
+    <div id="loading">LOADING INVADER PATROL…</div>
+
+    <div id="touch-controls" aria-label="Touch controls">
+      <div class="touch-group">
+        <button type="button" data-key="ArrowLeft" aria-label="Move left">◀</button>
+        <button type="button" data-key="ArrowRight" aria-label="Move right">▶</button>
+      </div>
+      <button id="fire" type="button" data-key="Space" aria-label="Fire">FIRE</button>
+    </div>
+
+    <!-- The bundled net plugin assigns to a global `register_plugin`; declaring
+         it up front keeps the bundle compatible with strict-mode scripts. -->
+    <script>
+      var register_plugin;
+    </script>
+    <script src="mq_js_bundle.js"></script>
+    <script>
+      const gameCanvas = document.querySelector("#glcanvas");
+      const loading = document.querySelector("#loading");
+
+      // The Rust side calls this once the first frame has been presented.
+      if (typeof importObject !== "undefined" && importObject.env) {
+        importObject.env.game_ready = () => loading.classList.add("hidden");
+      }
+
+      load("invaders.wasm");
+
+      // The loader installs its keyboard handlers on the canvas. Synthesizing
+      // key events lets the same Rust input path serve desktop and touch controls.
+      function sendKey(type, code) {
+        gameCanvas.dispatchEvent(
+          new KeyboardEvent(type, {
+            code,
+            key: code === "Space" ? " " : code,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      }
+
+      document.querySelectorAll("[data-key]").forEach((button) => {
+        const code = button.dataset.key;
+
+        button.addEventListener("pointerdown", (event) => {
+          event.preventDefault();
+          button.setPointerCapture(event.pointerId);
+          sendKey("keydown", code);
+        });
+
+        const release = (event) => {
+          event.preventDefault();
+          sendKey("keyup", code);
+        };
+
+        button.addEventListener("pointerup", release);
+        button.addEventListener("pointercancel", release);
+      });
+
+      window.setTimeout(() => {
+        if (!loading.classList.contains("hidden")) {
+          loading.textContent = "STILL LOADING… CHECK THE BROWSER CONSOLE";
+        }
+      }, 15_000);
+    </script>
+  </body>
+</html>

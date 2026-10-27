@@ -1,0 +1,18 @@
+[package]
+name = "invaders"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[features]
+default = []
+desktop-audio = ["macroquad/audio"]
+
+[dependencies]
+macroquad = "0.4.16"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+macroquad = { version = "0.4.16", features = ["audio"] }
+
+[patch.crates-io]
+quad-snd = { path = "vendor/quad-snd" }
