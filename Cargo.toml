@@ -4,15 +4,15 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
-[features]
-default = []
-desktop-audio = ["macroquad/audio"]
-
 [dependencies]
 macroquad = "0.4.16"
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
+[target.'cfg(any(target_arch = "wasm32", target_os = "macos", target_os = "windows"))'.dependencies]
 macroquad = { version = "0.4.16", features = ["audio"] }
+
+[target.'cfg(all(target_os = "linux", not(target_arch = "wasm32")))'.dependencies]
+hound = "3.5.1"
+libloading = "0.8"
 
 [patch.crates-io]
 quad-snd = { path = "vendor/quad-snd" }

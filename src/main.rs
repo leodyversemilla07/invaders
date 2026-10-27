@@ -1,14 +1,13 @@
+mod audio;
 mod game;
 mod render;
 
 use std::error::Error;
 
-use macroquad::{
-    audio::{self, PlaySoundParams, Sound},
-    prelude::*,
-};
+use macroquad::prelude::*;
 
 use crate::{
+    audio::{AudioPlayer, Sound},
     game::{Game, GameEvent, GameState, InputState, WORLD_HEIGHT, WORLD_WIDTH},
     render::RenderAssets,
 };
@@ -51,72 +50,48 @@ struct Sounds {
 }
 
 impl Sounds {
-    async fn load() -> Self {
+    async fn load(player: &AudioPlayer) -> Self {
         Self {
-            player_shot: load_optional_sound("sounds/shoot.wav").await,
-            alien_shot: load_optional_sound("sounds/alien_shoot.wav").await,
-            explosion: load_optional_sound("sounds/explosion.wav").await,
-            player_hit: load_optional_sound("sounds/player_hit.wav").await,
-            wave_clear: load_optional_sound("sounds/wave_clear.wav").await,
-            game_over: load_optional_sound("sounds/game_over.wav").await,
+            player_shot: player.load("sounds/shoot.wav").await,
+            alien_shot: player.load("sounds/alien_shoot.wav").await,
+            explosion: player.load("sounds/explosion.wav").await,
+            player_hit: player.load("sounds/player_hit.wav").await,
+            wave_clear: player.load("sounds/wave_clear.wav").await,
+            game_over: player.load("sounds/game_over.wav").await,
         }
     }
 }
 
-async fn load_optional_sound(path: &str) -> Option<Sound> {
-    #[cfg(any(target_arch = "wasm32", feature = "desktop-audio"))]
-    {
-        match audio::load_sound(path).await {
-            Ok(sound) => Some(sound),
-            Err(error) => {
-                eprintln!("Could not load sound {path}: {error}");
-                None
-            }
-        }
-    }
-
-    #[cfg(not(any(target_arch = "wasm32", feature = "desktop-audio")))]
-    {
-        let _ = path;
-        None
-    }
-}
-
-fn play_sound(sound: &Option<Sound>, volume: f32) {
-    if let Some(sound) = sound {
-        audio::play_sound(
-            sound,
-            PlaySoundParams {
-                looped: false,
-                volume,
-            },
-        );
-    }
-}
-
-fn handle_events(game: &mut Game, sounds: &Sounds, muted: bool) {
+fn handle_events(game: &mut Game, player: &AudioPlayer, sounds: &Sounds, muted: bool) {
     if muted {
         return;
     }
 
     for event in game.take_events() {
         match event {
-            GameEvent::PlayerFired => play_sound(&sounds.player_shot, 0.32),
-            GameEvent::AlienFired => play_sound(&sounds.alien_shot, 0.18),
-            GameEvent::AlienDestroyed => play_sound(&sounds.explosion, 0.42),
-            GameEvent::PlayerHit => play_sound(&sounds.player_hit, 0.65),
-            GameEvent::WaveCleared => play_sound(&sounds.wave_clear, 0.65),
-            GameEvent::GameOver => play_sound(&sounds.game_over, 0.75),
+            GameEvent::PlayerFired => play_sound(player, &sounds.player_shot, 0.32),
+            GameEvent::AlienFired => play_sound(player, &sounds.alien_shot, 0.18),
+            GameEvent::AlienDestroyed => play_sound(player, &sounds.explosion, 0.42),
+            GameEvent::PlayerHit => play_sound(player, &sounds.player_hit, 0.65),
+            GameEvent::WaveCleared => play_sound(player, &sounds.wave_clear, 0.65),
+            GameEvent::GameOver => play_sound(player, &sounds.game_over, 0.75),
         }
+    }
+}
+
+fn play_sound(player: &AudioPlayer, sound: &Option<Sound>, volume: f32) {
+    if let Some(sound) = sound {
+        player.play(sound, volume);
     }
 }
 
 #[macroquad::main(window_conf)]
 async fn main() -> AppResult<()> {
-    set_pc_assets_folder("assets");
+    set_pc_assets_folder(audio::ASSETS_FOLDER);
 
     let assets = RenderAssets::load().await?;
-    let sounds = Sounds::load().await;
+    let audio_player = AudioPlayer::new();
+    let sounds = Sounds::load(&audio_player).await;
     let mut game = Game::new_with_seed(get_time().to_bits());
     let mut muted = false;
     let mut accumulator = 0.0;
@@ -180,7 +155,7 @@ async fn main() -> AppResult<()> {
             accumulator = 0.0;
         }
 
-        handle_events(&mut game, &sounds, muted);
+        handle_events(&mut game, &audio_player, &sounds, muted);
 
         set_camera(&virtual_camera);
         clear_background(BLACK);

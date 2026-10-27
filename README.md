@@ -11,6 +11,7 @@ pixel-art renderer while keeping the simulation independent from the engine.
 - Five rows of animated invaders with accelerating movement
 - Three lives, alien projectiles, collisions, scoring, and progressive waves
 - Pause, restart, mute, a title screen, and a game-over screen
+- Sound effects on desktop and in the browser, with no system packages to install
 - Fixed 60 Hz simulation with rendering independent of frame rate
 - Native desktop and WebAssembly builds from the same Rust source
 - Responsive letterboxed display and touch controls in the browser
@@ -28,21 +29,25 @@ pixel-art renderer while keeping the simulation independent from the engine.
 
 ## Run natively
 
-Requirements: a current stable Rust toolchain.
+Requirements: a current stable Rust toolchain. No system audio packages or
+development headers are needed.
 
 ```bash
 cargo run
 ```
 
-The default native build is silent so it does not require platform audio system
-libraries. On Linux, enable desktop audio with:
+### How desktop audio works
 
-```bash
-cargo run --features desktop-audio
-```
+| Platform | Backend |
+|---|---|
+| Linux | PulseAudio, loaded at runtime through `libpulse-simple.so.0`; falls back to `paplay`, `pw-play`, or `aplay` |
+| macOS / Windows | System audio through Macroquad |
+| Browser | Web Audio through Macroquad |
 
-That feature requires the ALSA development package (`libasound2-dev` on Debian
-and Ubuntu). Browser builds include audio automatically.
+The Linux backend deliberately avoids ALSA: on a PulseAudio or PipeWire desktop
+the hardware device is owned by the sound server, so the game talks to
+PulseAudio instead. If neither PulseAudio nor a command line player is
+available, the game still runs, just silently.
 
 ## Build and run in a browser
 
@@ -80,6 +85,7 @@ cargo test
 
 ```text
 src/
+├── audio.rs   # Cross-platform sound playback (PulseAudio, system, Web Audio)
 ├── game.rs    # Engine-independent rules, state, collisions, and unit tests
 ├── main.rs    # Macroquad loop, input, audio, and fixed-timestep driver
 └── render.rs  # Pixel-art renderer, HUD, and screens
